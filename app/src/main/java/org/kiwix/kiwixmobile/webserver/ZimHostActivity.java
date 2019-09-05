@@ -221,7 +221,6 @@ public class ZimHostActivity extends BaseActivity implements
   }
 
   private void layoutServerStarted() {
-    Log.v("DANG", "Layout server stared");
     serverTextView.setText(getString(R.string.server_started_message, ip));
     startServerButton.setText(getString(R.string.stop_server_label));
     startServerButton.setBackgroundColor(getResources().getColor(R.color.stopServer));
