@@ -75,6 +75,7 @@ public class ZimHostActivity extends BaseActivity implements
   private String ip;
   private ServiceConnection serviceConnection;
   private ProgressDialog progressDialog;
+  private boolean isBound;
 
   @Override
   protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -83,10 +84,6 @@ public class ZimHostActivity extends BaseActivity implements
 
     setUpToolbar();
 
-    if (savedInstanceState != null) {
-      ip = savedInstanceState.getString(IP_STATE_KEY);
-      layoutServerStarted();
-    }
     bookDelegate =
         new BookOnDiskDelegate.BookDelegate(sharedPreferenceUtil,
             null,
@@ -111,12 +108,19 @@ public class ZimHostActivity extends BaseActivity implements
       public void onServiceConnected(ComponentName className, IBinder service) {
         hotspotService = ((HotspotService.HotspotBinder) service).getService();
         hotspotService.registerCallBack(ZimHostActivity.this);
+        isBound = true;
       }
 
       @Override
       public void onServiceDisconnected(ComponentName arg0) {
+        isBound = false;
       }
     };
+
+    if (savedInstanceState != null) {
+      ip = savedInstanceState.getString(IP_STATE_KEY);
+      layoutServerStarted();
+    }
 
     startServerButton.setOnClickListener(v -> {
       //Get the path of ZIMs user has selected
@@ -185,8 +189,10 @@ public class ZimHostActivity extends BaseActivity implements
   }
 
   private void unbindService() {
-    if (hotspotService != null) {
+    if (isBound) {
       unbindService(serviceConnection);
+      hotspotService.registerCallBack(null);
+      isBound = false;
     }
   }
 
@@ -215,6 +221,7 @@ public class ZimHostActivity extends BaseActivity implements
   }
 
   private void layoutServerStarted() {
+    Log.v("DANG", "Layout server stared");
     serverTextView.setText(getString(R.string.server_started_message, ip));
     startServerButton.setText(getString(R.string.stop_server_label));
     startServerButton.setBackgroundColor(getResources().getColor(R.color.stopServer));
