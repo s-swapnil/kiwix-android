@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Authors:
+* BaRaN6161 TURK
+-->
+<resources>
+  <string name="file_system_does_not_support_4gb">Dosya sisteminiz 4GB’ın üzerindeki dosyaları desteklemiyor</string>
+  <string name="detecting_file_system">Dosya sisteminin 4GB dosyaları oluşturabildiğini algılanabilir</string>
+</resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Authors:
+* Mirzali
+-->
+<resources>
+  <string name="retry">Anciya bıcerrebne</string>
+  <string name="download">Biya war</string>
+  <string name="complete">Temam</string>
+</resources>
