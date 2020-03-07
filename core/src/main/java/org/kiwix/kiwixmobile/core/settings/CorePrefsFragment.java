@@ -33,7 +33,6 @@ import android.view.LayoutInflater;
 import android.webkit.WebView;
 import android.widget.BaseAdapter;
 import android.widget.Toast;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import eu.mhutti1.utils.storage.StorageDevice;
@@ -44,11 +43,14 @@ import java.util.Locale;
 import javax.inject.Inject;
 import kotlin.Unit;
 import kotlin.io.FilesKt;
+import org.jetbrains.annotations.NotNull;
 import org.kiwix.kiwixmobile.core.CoreApp;
 import org.kiwix.kiwixmobile.core.NightModeConfig;
 import org.kiwix.kiwixmobile.core.R;
 import org.kiwix.kiwixmobile.core.extensions.ContextExtensionsKt;
 import org.kiwix.kiwixmobile.core.main.AddNoteDialog;
+import org.kiwix.kiwixmobile.core.utils.DialogShower;
+import org.kiwix.kiwixmobile.core.utils.KiwixDialog;
 import org.kiwix.kiwixmobile.core.utils.LanguageUtils;
 import org.kiwix.kiwixmobile.core.utils.SharedPreferenceUtil;
 
@@ -74,12 +76,17 @@ public abstract class CorePrefsFragment extends PreferenceFragment implements
   protected StorageCalculator storageCalculator;
   @Inject
   protected NightModeConfig nightModeConfig;
-
+  @Inject
+  protected DialogShower alertDialogShower;
   private SliderPreference mSlider;
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
-    CoreApp.getCoreComponent().inject(this);
+    CoreApp.getCoreComponent()
+      .activityComponentBuilder()
+      .activity(getActivity())
+      .build()
+      .inject(this);
     super.onCreate(savedInstanceState);
     addPreferencesFromResource(R.xml.preferences);
 
@@ -96,11 +103,7 @@ public abstract class CorePrefsFragment extends PreferenceFragment implements
   private void setSliderState() {
     boolean enabled = getPreferenceManager().getSharedPreferences().getBoolean(
       PREF_ZOOM_ENABLED, false);
-    if (enabled) {
-      mSlider.setEnabled(true);
-    } else {
-      mSlider.setEnabled(false);
-    }
+    mSlider.setEnabled(enabled);
   }
 
   @Override
@@ -123,25 +126,20 @@ public abstract class CorePrefsFragment extends PreferenceFragment implements
 
   protected void setUpLanguageChooser(String preferenceId) {
     ListPreference languagePref = (ListPreference) findPreference(preferenceId);
-    String selectedLang = sharedPreferenceUtil.getPrefLanguage(Locale.getDefault().toString());
     List<String> languageCodeList = new LanguageUtils(getActivity()).getKeys();
-    selectedLang = languageCodeList.contains(selectedLang) ? selectedLang : "en";
-    String code[] = languageCodeList.toArray(new String[0]);
-    String[] entries = new String[code.length];
-    for (int index = 0; index < code.length; index++) {
-      Locale locale = new Locale(code[index]);
-      entries[index] =
-        locale.getDisplayLanguage() + " (" + locale.getDisplayLanguage(locale) + ") ";
-    }
-    languagePref.setEntries(entries);
-    languagePref.setEntryValues(code);
+    languageCodeList.add(0, Locale.ROOT.getLanguage());
+    final String selectedLang =
+      selectedLanguage(languageCodeList, sharedPreferenceUtil.getPrefLanguage());
+    languagePref.setEntries(languageDisplayValues(languageCodeList));
+    languagePref.setEntryValues(languageCodeList.toArray(new String[0]));
     languagePref.setDefaultValue(selectedLang);
     languagePref.setValue(selectedLang);
-    languagePref.setTitle(new Locale(selectedLang).getDisplayLanguage());
+    languagePref.setTitle(selectedLang.equals(Locale.ROOT.toString())
+      ? getString(R.string.device_default)
+      : new Locale(selectedLang).getDisplayLanguage());
     languagePref.setOnPreferenceChangeListener((preference, newValue) -> {
       String languageCode = (String) newValue;
       LanguageUtils.handleLocaleChange(getActivity(), languageCode);
-      preference.setTitle(new Locale(languageCode).getLanguage());
       sharedPreferenceUtil.putPrefLanguage(languageCode);
       restartActivity();
       return true;
@@ -152,6 +150,20 @@ public abstract class CorePrefsFragment extends PreferenceFragment implements
     getActivity().setResult(RESULT_RESTART);
     getActivity().finish();
     getActivity().startActivity(new Intent(getActivity(), getActivity().getClass()));
+  }
+
+  @NotNull private String selectedLanguage(List<String> languageCodeList, String langPref) {
+    return languageCodeList.contains(langPref) ? langPref : "en";
+  }
+
+  @NotNull private String[] languageDisplayValues(List<String> languageCodeList) {
+    String[] entries = new String[languageCodeList.size()];
+    entries[0] = getString(R.string.device_default);
+    for (int i = 1; i < languageCodeList.size(); i++) {
+      Locale locale = new Locale(languageCodeList.get(i));
+      entries[i] = locale.getDisplayLanguage() + " (" + locale.getDisplayLanguage(locale) + ") ";
+    }
+    return entries;
   }
 
   private void setAppVersionNumber() {
@@ -179,7 +191,6 @@ public abstract class CorePrefsFragment extends PreferenceFragment implements
 
   @Override
   public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
-
     if (key.equals(PREF_ZOOM_ENABLED)) {
       setSliderState();
     }
@@ -189,32 +200,25 @@ public abstract class CorePrefsFragment extends PreferenceFragment implements
     }
     if (key.equals(PREF_NIGHT_MODE)) {
       sharedPreferenceUtil.updateNightMode();
+      restartActivity();
     }
   }
 
   private void clearAllHistoryDialog() {
-    new AlertDialog.Builder(getActivity())
-      .setTitle(getResources().getString(R.string.clear_all_history_dialog_title))
-      .setMessage(getResources().getString(R.string.clear_recent_and_tabs_history_dialog))
-      .setPositiveButton(android.R.string.yes, (dialog, which) -> {
-        presenter.clearHistory();
-        CoreSettingsActivity.allHistoryCleared = true;
-        Toast.makeText(getActivity(),
-          getResources().getString(R.string.all_history_cleared_toast), Toast.LENGTH_SHORT)
-          .show();
-      })
-      .setNegativeButton(android.R.string.no, (dialog, which) -> {
-        // do nothing
-      })
-      .setIcon(R.drawable.ic_warning)
-      .show();
+    alertDialogShower.show(KiwixDialog.ClearAllHistory.INSTANCE, () -> {
+      presenter.clearHistory();
+      CoreSettingsActivity.allHistoryCleared = true;
+      ContextExtensionsKt.toast(getActivity(), R.string.all_history_cleared_toast,
+        Toast.LENGTH_SHORT);
+      return Unit.INSTANCE;
+    });
   }
 
   private void showClearAllNotesDialog() {
-    new AlertDialog.Builder(getActivity()).setMessage(R.string.delete_notes_confirmation_msg)
-      .setNegativeButton(android.R.string.cancel, null) // Do nothing for 'Cancel' button
-      .setPositiveButton(R.string.yes, (dialog, which) -> clearAllNotes())
-      .show();
+    alertDialogShower.show(KiwixDialog.ClearAllNotes.INSTANCE, () -> {
+      clearAllNotes();
+      return Unit.INSTANCE;
+    });
   }
 
   private void clearAllNotes() {
@@ -246,10 +250,7 @@ public abstract class CorePrefsFragment extends PreferenceFragment implements
       view.getSettings().setJavaScriptEnabled(true);
       view.setBackgroundColor(0);
     }
-    new AlertDialog.Builder(getActivity())
-      .setView(view)
-      .setPositiveButton(android.R.string.ok, null)
-      .show();
+    alertDialogShower.show(new KiwixDialog.OpenCredits(() -> view));
   }
 
   @Override
@@ -275,7 +276,7 @@ public abstract class CorePrefsFragment extends PreferenceFragment implements
 
   public void openFolderSelect() {
     StorageSelectDialog dialogFragment = new StorageSelectDialog();
-    dialogFragment.setOnSelectListener(this::onStorageDeviceSelected);
+    dialogFragment.setOnSelectAction(this::onStorageDeviceSelected);
     dialogFragment.show(((AppCompatActivity) getActivity()).getSupportFragmentManager(),
       getResources().getString(R.string.pref_storage));
   }
